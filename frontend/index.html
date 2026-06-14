@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Security Discovery Copilot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#0D1117;
+  --ink-2:#1C2333;
+  --ink-3:#252D3D;
+  --rule:#2A3444;
+  --blue:#4F8EF7;
+  --blue-pale:rgba(79,142,247,0.1);
+  --green:#3DD68C;
+  --green-pale:rgba(61,214,140,0.1);
+  --amber:#F0A429;
+  --amber-pale:rgba(240,164,41,0.1);
+  --red:#F05252;
+  --red-pale:rgba(240,82,82,0.1);
+  --purple:#A78BFA;
+  --text:#CDD5E0;
+  --text-2:#8892A4;
+  --text-3:#4A5568;
+  --mono:'IBM Plex Mono',monospace;
+  --sans:'IBM Plex Sans',sans-serif;
+  --r:6px;
+}
+html{scroll-behavior:smooth}
+body{background:var(--ink);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh}
+
+/* ── LAYOUT ── */
+.shell{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+@media(max-width:800px){.shell{grid-template-columns:1fr}}
+
+/* ── SIDEBAR ── */
+.sidebar{background:var(--ink-2);border-right:1px solid var(--rule);padding:0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+.sidebar-header{padding:20px 18px 14px;border-bottom:1px solid var(--rule)}
+.sidebar-logo{font-family:var(--mono);font-size:11px;color:var(--blue);letter-spacing:0.1em;font-weight:600;text-transform:uppercase}
+.sidebar-tagline{font-size:12px;color:var(--text-2);margin-top:4px;line-height:1.4}
+.sidebar-section{padding:14px 18px 6px;font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:0.08em;text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 18px;cursor:pointer;transition:background 0.15s;border-left:2px solid transparent;font-size:13px;color:var(--text-2)}
+.nav-item:hover{background:var(--ink-3);color:var(--text)}
+.nav-item.active{background:rgba(79,142,247,0.08);border-left-color:var(--blue);color:var(--blue)}
+.nav-icon{font-size:14px;flex-shrink:0;width:18px;text-align:center}
+.nav-badge{margin-left:auto;font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:3px;background:rgba(79,142,247,0.15);color:var(--blue)}
+.nav-badge.done{background:var(--green-pale);color:var(--green)}
+.nav-badge.warn{background:var(--amber-pale);color:var(--amber)}
+.sidebar-footer{margin-top:auto;padding:16px 18px;border-top:1px solid var(--rule)}
+.scenario-select{width:100%;background:var(--ink-3);border:1px solid var(--rule);border-radius:var(--r);padding:7px 10px;font-size:12px;color:var(--text);font-family:var(--sans);outline:none;cursor:pointer;margin-top:6px}
+.sidebar-label{font-size:11px;color:var(--text-2)}
+
+/* ── MAIN ── */
+.main{display:flex;flex-direction:column;min-height:100vh}
+.main-header{padding:16px 24px;border-bottom:1px solid var(--rule);background:var(--ink-2);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;position:sticky;top:0;z-index:10}
+.main-title{font-size:15px;font-weight:500;color:var(--text)}
+.main-status{display:flex;gap:8px;align-items:center}
+.status-pill{font-family:var(--mono);font-size:10px;padding:3px 9px;border-radius:3px}
+.sp-discovery{background:var(--blue-pale);color:var(--blue)}
+.sp-analysis{background:var(--amber-pale);color:var(--amber)}
+.sp-complete{background:var(--green-pale);color:var(--green)}
+.content{flex:1;padding:24px;max-width:900px;width:100%}
+
+/* ── CHAT ── */
+.chat-wrap{display:flex;flex-direction:column;gap:0}
+.msg{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--rule)}
+.msg:last-child{border-bottom:none}
+.msg-avatar{width:30px;height:30px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;font-family:var(--mono)}
+.msg-avatar.se{background:rgba(79,142,247,0.15);color:var(--blue)}
+.msg-avatar.customer{background:var(--ink-3);color:var(--text-2)}
+.msg-body{flex:1}
+.msg-role{font-family:var(--mono);font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px}
+.msg-text{font-size:14px;color:var(--text);line-height:1.7}
+.msg-text.streaming::after{content:'▊';animation:blink 0.8s step-end infinite;color:var(--blue);margin-left:2px}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── INPUT ── */
+.chat-input-area{padding:16px 24px;border-top:1px solid var(--rule);background:var(--ink-2);display:flex;gap:10px;position:sticky;bottom:0}
+.chat-input{flex:1;background:var(--ink-3);border:1px solid var(--rule);border-radius:var(--r);padding:10px 14px;font-size:14px;font-family:var(--sans);color:var(--text);outline:none;resize:none;height:44px;transition:border-color 0.15s}
+.chat-input:focus{border-color:var(--blue)}
+.chat-input::placeholder{color:var(--text-3)}
+.send-btn{background:var(--blue);border:none;border-radius:var(--r);width:44px;height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:background 0.15s}
+.send-btn:hover{background:#3A7AE4}
+.send-btn:disabled{background:var(--ink-3);cursor:not-allowed}
+.send-btn svg{width:16px;height:16px}
+
+/* ── EMPTY STATE ── */
+.empty-state{padding:48px 24px;text-align:center}
+.empty-icon{font-size:40px;margin-bottom:16px}
+.empty-title{font-size:18px;font-weight:500;color:var(--text);margin-bottom:8px}
+.empty-sub{font-size:14px;color:var(--text-2);max-width:400px;margin:0 auto 24px}
+.start-btn{background:var(--blue);color:#fff;border:none;border-radius:var(--r);padding:10px 20px;font-size:14px;font-weight:500;font-family:var(--sans);cursor:pointer;transition:background 0.15s}
+.start-btn:hover{background:#3A7AE4}
+
+/* ── ANALYSIS PANELS ── */
+.panel{background:var(--ink-2);border:1px solid var(--rule);border-radius:var(--r);margin-bottom:14px;overflow:hidden}
+.panel-head{padding:12px 16px;border-bottom:1px solid var(--rule);display:flex;align-items:center;justify-content:space-between}
+.panel-title{font-family:var(--mono);font-size:11px;color:var(--blue);text-transform:uppercase;letter-spacing:0.08em;font-weight:600}
+.panel-body{padding:16px}
+.run-btn{font-family:var(--mono);font-size:11px;padding:5px 12px;border-radius:var(--r);border:1px solid var(--blue);background:transparent;color:var(--blue);cursor:pointer;transition:all 0.15s}
+.run-btn:hover{background:var(--blue-pale)}
+.run-btn:disabled{opacity:0.4;cursor:not-allowed}
+
+/* ── GAP LIST ── */
+.gap-item{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--rule)}
+.gap-item:last-child{border-bottom:none}
+.severity-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:6px}
+.sev-critical{background:var(--red)}
+.sev-high{background:var(--amber)}
+.sev-medium{background:var(--blue)}
+.sev-low{background:var(--text-3)}
+.gap-title{font-size:13px;font-weight:500;color:var(--text);margin-bottom:3px}
+.gap-impact{font-size:12px;color:var(--text-2);line-height:1.5}
+.gap-meta{display:flex;gap:6px;margin-top:5px;flex-wrap:wrap}
+.tag{font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:3px}
+.tag-domain{background:rgba(79,142,247,0.1);color:var(--blue)}
+.tag-effort{background:var(--ink-3);color:var(--text-2)}
+.tag-fw{background:rgba(61,214,140,0.1);color:var(--green)}
+
+/* ── VENDOR CARDS ── */
+.vendor-card{border:1px solid var(--rule);border-radius:var(--r);padding:14px;margin-bottom:10px;background:var(--ink-3)}
+.vendor-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.vendor-name{font-size:14px;font-weight:600;color:var(--text)}
+.fit-bar{display:flex;align-items:center;gap:8px}
+.fit-track{width:80px;height:4px;background:var(--rule);border-radius:2px;overflow:hidden}
+.fit-fill{height:100%;border-radius:2px;background:var(--green)}
+.fit-label{font-family:var(--mono);font-size:11px;color:var(--green)}
+.vendor-why{font-size:13px;color:var(--text-2);margin-bottom:6px;line-height:1.5}
+.vendor-caveat{font-size:12px;color:var(--amber);line-height:1.4}
+.phase-badge{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:3px;background:rgba(167,139,250,0.1);color:var(--purple)}
+
+/* ── OBJECTIONS ── */
+.constraint-card{border-left:3px solid var(--amber);background:var(--amber-pale);border-radius:0 var(--r) var(--r) 0;padding:12px 14px;margin-bottom:10px}
+.constraint-blocking{border-left-color:var(--red);background:var(--red-pale)}
+.constraint-type{font-family:var(--mono);font-size:10px;color:var(--amber);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px}
+.constraint-type.blocking{color:var(--red)}
+.constraint-ack{font-size:13px;color:var(--text);margin-bottom:6px;font-style:italic}
+.constraint-reframe{font-size:13px;color:var(--text-2);margin-bottom:8px}
+.constraint-label{font-family:var(--mono);font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.04em;margin:8px 0 4px}
+.constraint-list{list-style:none;display:flex;flex-direction:column;gap:3px}
+.constraint-list li{font-size:12px;color:var(--text-2);padding-left:12px;position:relative}
+.constraint-list li::before{content:'→';position:absolute;left:0;color:var(--text-3)}
+
+/* ── ARCH OPTIONS ── */
+.options-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:640px){.options-grid{grid-template-columns:1fr}}
+.option-card{border:1px solid var(--rule);border-radius:var(--r);padding:14px;background:var(--ink-3);position:relative}
+.option-letter{font-family:var(--mono);font-size:11px;color:var(--text-3);margin-bottom:4px}
+.option-label{font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px}
+.option-headline{font-size:12px;color:var(--text-2);margin-bottom:10px;line-height:1.4}
+.option-meta{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.option-stat{background:var(--ink-2);border-radius:4px;padding:6px 8px}
+.option-stat-label{font-family:var(--mono);font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.04em}
+.option-stat-val{font-size:12px;font-weight:500;color:var(--text);margin-top:2px}
+.option-risk{font-size:12px;color:var(--amber);margin-top:6px;line-height:1.4}
+.option-when{font-size:12px;color:var(--green);margin-top:4px;line-height:1.4}
+
+/* ── STAKEHOLDERS ── */
+.stakeholder-item{border:1px solid var(--rule);border-radius:var(--r);padding:14px;margin-bottom:10px;background:var(--ink-3)}
+.stakeholder-role{font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px}
+.stakeholder-concern{font-size:12px;color:var(--text-3);margin-bottom:10px;font-family:var(--mono)}
+.stakeholder-message{font-size:13px;color:var(--text);margin-bottom:8px;padding:8px 10px;background:var(--ink-2);border-radius:4px;border-left:2px solid var(--blue)}
+.stakeholder-objection{font-size:12px;color:var(--amber);margin-bottom:4px}
+.stakeholder-response{font-size:12px;color:var(--text-2);margin-bottom:8px}
+.stakeholder-content{font-family:var(--mono);font-size:11px;color:var(--purple);padding:4px 8px;background:rgba(167,139,250,0.08);border-radius:4px;display:inline-block}
+
+/* ── DEAL RISK ── */
+.risk-score-display{display:flex;align-items:center;gap:16px;padding:16px;background:var(--ink-3);border-radius:var(--r);margin-bottom:14px}
+.risk-score-num{font-family:var(--mono);font-size:36px;font-weight:600;line-height:1}
+.risk-score-label{font-size:12px;color:var(--text-2);margin-top:2px}
+.risk-rating{font-family:var(--mono);font-size:11px;padding:3px 9px;border-radius:3px}
+.rr-low{background:var(--green-pale);color:var(--green)}
+.rr-medium{background:var(--blue-pale);color:var(--blue)}
+.rr-high{background:var(--amber-pale);color:var(--amber)}
+.rr-very-high{background:var(--red-pale);color:var(--red)}
+.go-nogo{padding:10px 14px;border-radius:var(--r);font-size:13px;line-height:1.6;margin-bottom:14px}
+.go-nogo.proceed{background:var(--green-pale);border:1px solid rgba(61,214,140,0.2);color:var(--green)}
+.go-nogo.caution{background:var(--amber-pale);border:1px solid rgba(240,164,41,0.2);color:var(--amber)}
+.go-nogo.stop{background:var(--red-pale);border:1px solid rgba(240,82,82,0.2);color:var(--red)}
+.risk-item{padding:10px 0;border-bottom:1px solid var(--rule)}
+.risk-item:last-child{border-bottom:none}
+.risk-item-header{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.risk-item-title{font-size:13px;font-weight:500;color:var(--text)}
+.sev-tag{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:3px}
+.st-critical{background:var(--red-pale);color:var(--red)}
+.st-high{background:var(--amber-pale);color:var(--amber)}
+.st-medium{background:var(--blue-pale);color:var(--blue)}
+.risk-mitigation{font-size:12px;color:var(--text-2);margin-top:3px}
+.exec-badge{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:3px;background:rgba(167,139,250,0.1);color:var(--purple)}
+
+/* ── EXEC SUMMARY ── */
+.exec-section{margin-bottom:14px}
+.exec-section-title{font-family:var(--mono);font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px}
+.exec-overview{font-size:14px;color:var(--text);line-height:1.7;padding:12px 14px;background:var(--ink-3);border-radius:var(--r);border-left:2px solid var(--blue)}
+.risk-key-item{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--rule)}
+.risk-key-item:last-child{border-bottom:none}
+.risk-urgency{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:3px;flex-shrink:0;margin-top:2px}
+.ur-immediate{background:var(--red-pale);color:var(--red)}
+.ur-30{background:var(--amber-pale);color:var(--amber)}
+.ur-90{background:var(--blue-pale);color:var(--blue)}
+.roadmap-phase{border:1px solid var(--rule);border-radius:var(--r);padding:12px;margin-bottom:8px;background:var(--ink-3)}
+.phase-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.phase-num{font-family:var(--mono);font-size:11px;color:var(--purple)}
+.phase-duration{font-family:var(--mono);font-size:10px;color:var(--text-3)}
+.phase-title{font-size:13px;font-weight:500;color:var(--text);margin-bottom:6px}
+.phase-objectives{list-style:none;display:flex;flex-direction:column;gap:3px}
+.phase-objectives li{font-size:12px;color:var(--text-2);padding-left:12px;position:relative}
+.phase-objectives li::before{content:'›';position:absolute;left:0;color:var(--text-3)}
+
+/* ── FLAGS ── */
+.flag-list{display:flex;flex-direction:column;gap:5px}
+.flag-item{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-2);padding:6px 10px;border-radius:4px}
+.flag-item.red-flag{background:var(--red-pale)}
+.flag-item.green-flag{background:var(--green-pale)}
+.flag-icon{flex-shrink:0;font-size:13px}
+
+/* ── LOADING ── */
+.loading{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2);padding:12px 0}
+.spinner{width:14px;height:14px;border:2px solid var(--rule);border-top-color:var(--blue);border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── MATRIX ── */
+.matrix-table{width:100%;border-collapse:collapse;font-size:12px}
+.matrix-table th{font-family:var(--mono);font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;padding:6px 10px;text-align:left;border-bottom:1px solid var(--rule)}
+.matrix-table td{padding:7px 10px;border-bottom:1px solid rgba(42,52,68,0.5);color:var(--text-2)}
+.matrix-table td:first-child{color:var(--text);font-weight:500}
+.matrix-table tr:last-child td{border-bottom:none}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-logo">Discovery Copilot</div>
+    <div class="sidebar-tagline">Security Discovery & Solution Design</div>
+  </div>
+
+  <div class="sidebar-section">SE Workflow</div>
+  <div class="nav-item active" onclick="switchView('discovery')" id="nav-discovery">
+    <span class="nav-icon">💬</span> Discovery
+    <span class="nav-badge" id="badge-discovery">LIVE</span>
+  </div>
+  <div class="nav-item" onclick="switchView('gaps')" id="nav-gaps">
+    <span class="nav-icon">⚠️</span> Gap Analysis
+    <span class="nav-badge" id="badge-gaps">—</span>
+  </div>
+  <div class="nav-item" onclick="switchView('recommendations')" id="nav-recommendations">
+    <span class="nav-icon">🎯</span> Recommendations
+    <span class="nav-badge" id="badge-recommendations">—</span>
+  </div>
+
+  <div class="sidebar-section">SE Advisory</div>
+  <div class="nav-item" onclick="switchView('objections')" id="nav-objections">
+    <span class="nav-icon">🛡️</span> Objections
+    <span class="nav-badge" id="badge-objections">—</span>
+  </div>
+  <div class="nav-item" onclick="switchView('architecture')" id="nav-architecture">
+    <span class="nav-icon">🏗️</span> Architecture Options
+    <span class="nav-badge" id="badge-architecture">—</span>
+  </div>
+  <div class="nav-item" onclick="switchView('stakeholders')" id="nav-stakeholders">
+    <span class="nav-icon">👥</span> Stakeholders
+    <span class="nav-badge" id="badge-stakeholders">—</span>
+  </div>
+  <div class="nav-item" onclick="switchView('dealrisk')" id="nav-dealrisk">
+    <span class="nav-icon">📊</span> Deal Risk
+    <span class="nav-badge" id="badge-dealrisk">—</span>
+  </div>
+  <div class="nav-item" onclick="switchView('executive')" id="nav-executive">
+    <span class="nav-icon">📋</span> Executive Summary
+    <span class="nav-badge" id="badge-executive">—</span>
+  </div>
+
+  <div class="sidebar-footer">
+    <div class="sidebar-label">Customer scenario</div>
+    <select class="scenario-select" id="scenario-select" onchange="loadScenario(this.value)">
+      <option value="">— Start fresh —</option>
+      <option value="saas_soc2">SaaS · 500 employees · SOC2</option>
+      <option value="fintech_zerotrust">FinTech · 2000 employees · Zero Trust</option>
+      <option value="healthcare_phi">Healthcare · 750 employees · HIPAA</option>
+      <option value="enterprise_acquisition">Enterprise · 10,000 · Post-M&A</option>
+    </select>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="main-header">
+    <div class="main-title" id="main-title">Customer Discovery</div>
+    <div class="main-status">
+      <span class="status-pill sp-discovery" id="status-pill">DISCOVERY</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text-3)" id="session-indicator">No session</span>
+    </div>
+  </div>
+
+  <!-- VIEWS -->
+  <div id="view-discovery" style="display:flex;flex-direction:column;flex:1">
+    <div class="content" id="chat-messages" style="flex:1;overflow-y:auto;padding-bottom:0">
+      <div class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <div class="empty-title">Start a discovery session</div>
+        <div class="empty-sub">Select a scenario from the sidebar or start fresh. The AI will conduct an adaptive discovery conversation the way a senior SE would.</div>
+        <button class="start-btn" onclick="startDiscovery()">Begin Discovery →</button>
+      </div>
+    </div>
+    <div class="chat-input-area">
+      <textarea class="chat-input" id="chat-input" placeholder="Respond to the SE's question…" rows="1"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"
+        oninput="this.style.height='44px';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
+      <button class="send-btn" id="send-btn" onclick="sendMessage()" disabled>
+        <svg fill="none" stroke="white" stroke-width="2" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="view-gaps" style="display:none" class="content">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">// Gap Analysis</span>
+        <button class="run-btn" id="run-gaps-btn" onclick="runGapAnalysis()">Run Analysis</button>
+      </div>
+      <div class="panel-body" id="gaps-content">
+        <div style="font-size:13px;color:var(--text-2)">Complete discovery first, then run gap analysis to identify security gaps scored against CIS Controls, NIST CSF, SOC2, and ISO27001.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-recommendations" style="display:none" class="content">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">// Vendor Recommendations</span>
+        <button class="run-btn" id="run-recs-btn" onclick="runRecommendations()">Generate</button>
+      </div>
+      <div class="panel-body" id="recs-content">
+        <div style="font-size:13px;color:var(--text-2)">Requires gap analysis. Vendor recommendations are grounded in the gap analysis — Claude reasons over real vendor capability data, not marketing claims.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-objections" style="display:none" class="content">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">// Objection & Constraint Handling</span>
+        <button class="run-btn" id="run-obj-btn" onclick="runObjections()">Analyse Constraints</button>
+      </div>
+      <div class="panel-body" id="objections-content">
+        <div style="font-size:13px;color:var(--text-2)">Detects constraints from the discovery transcript (existing investments, budget, team size, contracts, migration risk) and generates SE responses grounded in real enterprise playbooks.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-architecture" style="display:none" class="content">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">// Architecture Options</span>
+        <button class="run-btn" id="run-arch-btn" onclick="runArchOptions()">Generate Options</button>
+      </div>
+      <div class="panel-body" id="arch-content">
+        <div style="font-size:13px;color:var(--text-2)">Generates 4 alternative architecture paths: Best Security / Best Cost / Fastest Time to Value / Lowest Operational Overhead. Each with vendors, risks, and when to choose it.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-stakeholders" style="display:none" class="content">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">// Stakeholder Alignment</span>
+        <button class="run-btn" id="run-stake-btn" onclick="runStakeholders()">Generate Briefs</button>
+      </div>
+      <div class="panel-body" id="stakeholders-content">
+        <div style="font-size:13px;color:var(--text-2)">Generates stakeholder-specific messaging for CISO, CIO, Security Architect, IAM team, and Finance. Each brief includes key message, likely objection, and 30-min meeting agenda.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-dealrisk" style="display:none" class="content">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">// Deal Risk Assessment</span>
+        <button class="run-btn" id="run-risk-btn" onclick="runDealRisk()">Assess Risk</button>
+      </div>
+      <div class="panel-body" id="dealrisk-content">
+        <div style="font-size:13px;color:var(--text-2)">Assesses technical, adoption, migration, organisational, and timeline risk. Produces a go/no-go recommendation and critical success factors.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-executive" style="display:none" class="content">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">// Executive Summary</span>
+        <button class="run-btn" id="run-exec-btn" onclick="runExecutiveSummary()">Generate</button>
+      </div>
+      <div class="panel-body" id="executive-content">
+        <div style="font-size:13px;color:var(--text-2)">Generates a 1-page CISO/CIO deliverable: key risks with business impact, 3-phase implementation roadmap, vendor recommendations, and next steps.</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end main -->
+</div><!-- end shell -->
+
+<script>
+const API = 'http://localhost:8001';
+let sessionId = null;
+let currentView = 'discovery';
+let discoveryComplete = false;
+
+// ── STATE FLAGS ────────────────────────────────────────────────
+const state = {
+  gapsDone: false,
+  recsDone: false,
+  objDone: false,
+  archDone: false,
+  stakeDone: false,
+  riskDone: false,
+  execDone: false,
+};
+
+function setBadge(key, text, cls='') {
+  const el = document.getElementById(`badge-${key}`);
+  if(!el) return;
+  el.textContent = text;
+  el.className = 'nav-badge' + (cls ? ' '+cls : '');
+}
+
+// ── NAVIGATION ─────────────────────────────────────────────────
+function switchView(view) {
+  document.querySelectorAll('[id^="view-"]').forEach(v=>v.style.display='none');
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById(`view-${view}`).style.display = view==='discovery' ? 'flex' : 'block';
+  document.getElementById(`nav-${view}`)?.classList.add('active');
+  currentView = view;
+  const titles = {
+    discovery:'Customer Discovery', gaps:'Gap Analysis',
+    recommendations:'Vendor Recommendations', objections:'Objection Handling',
+    architecture:'Architecture Options', stakeholders:'Stakeholder Alignment',
+    dealrisk:'Deal Risk Assessment', executive:'Executive Summary'
+  };
+  document.getElementById('main-title').textContent = titles[view] || view;
+}
+
+// ── SESSION ────────────────────────────────────────────────────
+async function createSession(scenario_id=null, company_name='Prospect', industry=null, company_size=null) {
+  const res = await fetch(`${API}/api/v1/sessions/`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({scenario_id, company_name, industry, company_size})
+  });
+  const data = await res.json();
+  sessionId = data.id;
+  document.getElementById('session-indicator').textContent = `Session: ${sessionId.slice(0,8)}`;
+  return data;
+}
+
+async function loadScenario(scenarioId) {
+  if(!scenarioId) return;
+  const scenarioMeta = {
+    saas_soc2: {company_name:'Acme SaaS', industry:'saas', company_size:'500'},
+    fintech_zerotrust: {company_name:'Fintech Corp', industry:'fintech', company_size:'2000'},
+    healthcare_phi: {company_name:'MedGroup', industry:'healthcare', company_size:'750'},
+    enterprise_acquisition: {company_name:'GlobalCorp', industry:'enterprise', company_size:'10000'},
+  };
+  const meta = scenarioMeta[scenarioId] || {};
+  await createSession(scenarioId, meta.company_name, meta.industry, meta.company_size);
+  startDiscovery(scenarioId);
+}
+
+// ── DISCOVERY ─────────────────────────────────────────────────
+async function startDiscovery(scenarioId=null) {
+  if(!sessionId) await createSession();
+
+  const chatEl = document.getElementById('chat-messages');
+  chatEl.innerHTML = '';
+  document.getElementById('send-btn').disabled = false;
+
+  const context = scenarioId ? {scenario: scenarioId} : {};
+  const res = await fetch(`${API}/api/v1/discovery/${sessionId}/start`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(context)
+  });
+
+  await streamResponse(res, 'SE');
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const content = input.value.trim();
+  if(!content || !sessionId) return;
+
+  addMessage('customer', 'You', content);
+  input.value = '';
+  input.style.height = '44px';
+  document.getElementById('send-btn').disabled = true;
+
+  const res = await fetch(`${API}/api/v1/discovery/${sessionId}/message`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({session_id: sessionId, content})
+  });
+
+  const isDone = await streamResponse(res, 'SE');
+  document.getElementById('send-btn').disabled = false;
+
+  if(isDone) {
+    discoveryComplete = true;
+    setBadge('discovery', 'DONE', 'done');
+    setBadge('gaps', 'READY');
+    document.getElementById('status-pill').textContent = 'ANALYSIS';
+    document.getElementById('status-pill').className = 'status-pill sp-analysis';
+  }
+}
+
+async function streamResponse(res, role) {
+  const msgEl = addMessage(role, role === 'SE' ? 'Solutions Engineer' : 'Customer', '');
+  const textEl = msgEl.querySelector('.msg-text');
+  textEl.classList.add('streaming');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let full = '';
+  let isDone = false;
+
+  while(true) {
+    const {done, value} = await reader.read();
+    if(done) break;
+    const lines = decoder.decode(value).split('\n');
+    for(const line of lines) {
+      if(line.startsWith('data: ')) {
+        try {
+          const data = JSON.parse(line.slice(6));
+          if(data.chunk) {
+            full += data.chunk;
+            textEl.textContent = full;
+            scrollChat();
+          }
+          if(data.done && data.discovery_complete) isDone = true;
+        } catch(e) {}
+      }
+    }
+  }
+  textEl.classList.remove('streaming');
+  return isDone;
+}
+
+function addMessage(role, label, content) {
+  const chatEl = document.getElementById('chat-messages');
+  // Remove empty state if present
+  const empty = chatEl.querySelector('.empty-state');
+  if(empty) empty.remove();
+
+  const el = document.createElement('div');
+  el.className = 'msg';
+  const initials = label === 'Solutions Engineer' ? 'SE' : label === 'Customer' || label === 'You' ? 'C' : label.slice(0,2).toUpperCase();
+  el.innerHTML = `
+    <div class="msg-avatar ${role==='SE'?'se':'customer'}">${initials}</div>
+    <div class="msg-body">
+      <div class="msg-role">${label}</div>
+      <div class="msg-text">${content}</div>
+    </div>`;
+  chatEl.appendChild(el);
+  scrollChat();
+  return el;
+}
+
+function scrollChat() {
+  const chatEl = document.getElementById('chat-messages');
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+// ── GAP ANALYSIS ──────────────────────────────────────────────
+async function runGapAnalysis() {
+  if(!sessionId) { alert('Start a discovery session first'); return; }
+  const btn = document.getElementById('run-gaps-btn');
+  btn.disabled = true; btn.textContent = 'Analysing…';
+  const el = document.getElementById('gaps-content');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Running deterministic gap analysis against CIS Controls, NIST CSF, SOC2, ISO27001…</div>';
+
+  try {
+    const res = await fetch(`${API}/api/v1/gaps/${sessionId}/analyse`, {method:'POST'});
+    const data = await res.json();
+    renderGaps(data);
+    state.gapsDone = true;
+    setBadge('gaps', 'DONE', 'done');
+    setBadge('recommendations', 'READY');
+    setBadge('objections', 'READY');
+    setBadge('architecture', 'READY');
+    setBadge('dealrisk', 'READY');
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--red);font-size:13px">Error: ${e.message}. Make sure the backend is running.</div>`;
+  }
+  btn.disabled = false; btn.textContent = 'Re-run';
+}
+
+function renderGaps(data) {
+  const el = document.getElementById('gaps-content');
+  const sevColor = {critical:'sev-critical',high:'sev-high',medium:'sev-medium',low:'sev-low'};
+
+  const maturityHtml = Object.entries(data.maturity_scores || {}).map(([domain, score]) => `
+    <span style="font-size:12px;color:var(--text-2);margin-right:12px">
+      <span style="color:var(--text-3);font-family:var(--mono)">${domain}:</span>
+      <span style="color:var(--text)">${score.score}/5</span>
+    </span>`).join('');
+
+  const complianceHtml = Object.entries(data.compliance_status || {}).map(([fw, status]) => {
+    const c = status==='pass'?'var(--green)':status==='partial'?'var(--amber)':'var(--red)';
+    return `<span style="font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:3px;background:rgba(0,0,0,0.2);color:${c};margin-right:6px">${fw}: ${status.toUpperCase()}</span>`;
+  }).join('');
+
+  const gapsHtml = (data.gaps || []).map(g => `
+    <div class="gap-item">
+      <div class="severity-dot ${sevColor[g.severity]||'sev-medium'}"></div>
+      <div style="flex:1">
+        <div class="gap-title">${g.title}</div>
+        <div class="gap-impact">${g.business_impact}</div>
+        <div class="gap-meta">
+          <span class="tag tag-domain">${g.domain}</span>
+          <span class="tag tag-effort">${g.remediation_effort} effort</span>
+          ${(g.framework_references||[]).slice(0,2).map(f=>`<span class="tag tag-fw">${f}</span>`).join('')}
+        </div>
+      </div>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div style="margin-bottom:14px">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Maturity Scores</div>
+      <div>${maturityHtml}</div>
+    </div>
+    ${complianceHtml ? `<div style="margin-bottom:14px">${complianceHtml}</div>` : ''}
+    <div style="font-family:var(--mono);font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">
+      ${(data.gaps||[]).length} gaps identified · Overall risk: <span style="color:${data.overall_risk_level==='critical'?'var(--red)':'var(--amber)'}">
+      ${(data.overall_risk_level||'').toUpperCase()}</span>
+    </div>
+    <div>${gapsHtml}</div>`;
+}
+
+// ── RECOMMENDATIONS ───────────────────────────────────────────
+async function runRecommendations() {
+  if(!state.gapsDone) { alert('Run gap analysis first'); return; }
+  const btn = document.getElementById('run-recs-btn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  const el = document.getElementById('recs-content');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Retrieving vendor capability data and reasoning over fit…</div>';
+
+  try {
+    const res = await fetch(`${API}/api/v1/recommendations/${sessionId}/generate`, {method:'POST'});
+    const data = await res.json();
+    renderRecommendations(data);
+    state.recsDone = true;
+    setBadge('recommendations', 'DONE', 'done');
+    setBadge('stakeholders', 'READY');
+    setBadge('executive', 'READY');
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--red);font-size:13px">Error: ${e.message}</div>`;
+  }
+  btn.disabled = false; btn.textContent = 'Regenerate';
+}
+
+function renderRecommendations(data) {
+  const el = document.getElementById('recs-content');
+  const phaseColors = {1:'var(--green)',2:'var(--blue)',3:'var(--purple)'};
+
+  const html = (data.recommendations||[]).map(r => `
+    <div class="vendor-card">
+      <div class="vendor-header">
+        <div>
+          <div class="vendor-name">${r.vendor} — ${r.product}</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-3)">${r.domain}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="phase-badge">Phase ${r.implementation_phase}</span>
+          <div class="fit-bar">
+            <div class="fit-track"><div class="fit-fill" style="width:${Math.round(r.fit_score*100)}%"></div></div>
+            <span class="fit-label">${Math.round(r.fit_score*100)}%</span>
+          </div>
+        </div>
+      </div>
+      <div class="vendor-why">${r.why_it_fits}</div>
+      <div class="vendor-caveat">⚠ ${r.why_it_may_not_fit}</div>
+      <div style="margin-top:8px;font-size:12px;color:var(--text-3)">${r.cost_consideration}</div>
+    </div>`).join('');
+
+  el.innerHTML = html || '<div style="color:var(--text-2);font-size:13px">No recommendations generated.</div>';
+}
+
+// ── OBJECTIONS ────────────────────────────────────────────────
+async function runObjections() {
+  if(!state.gapsDone) { alert('Run gap analysis first'); return; }
+  const btn = document.getElementById('run-obj-btn');
+  btn.disabled = true; btn.textContent = 'Analysing…';
+  const el = document.getElementById('objections-content');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Scanning transcript for constraints and generating SE responses…</div>';
+
+  try {
+    const res = await fetch(`${API}/api/v1/advanced/${sessionId}/objections`, {method:'POST'});
+    const data = await res.json();
+    renderObjections(data);
+    state.objDone = true;
+    setBadge('objections', 'DONE', 'done');
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--red);font-size:13px">Error: ${e.message}</div>`;
+  }
+  btn.disabled = false; btn.textContent = 'Re-analyse';
+}
+
+function renderObjections(data) {
+  const el = document.getElementById('objections-content');
+  if(!data.detected_constraints?.length) {
+    el.innerHTML = `
+      <div style="padding:12px;background:var(--green-pale);border-radius:var(--r);border:1px solid rgba(61,214,140,0.2)">
+        <div style="font-size:13px;color:var(--green);margin-bottom:4px">✓ No significant constraints detected</div>
+        <div style="font-size:12px;color:var(--text-2)">${data.overall_strategy}</div>
+      </div>`;
+    return;
+  }
+
+  const constraintHtml = (data.responses||[]).map(r => `
+    <div class="constraint-card ${r.constraint?.severity==='blocking'?'constraint-blocking':''}">
+      <div class="constraint-type ${r.constraint?.severity==='blocking'?'blocking':''}">
+        ${r.constraint?.severity?.toUpperCase()} · ${r.constraint?.type?.replace(/_/g,' ').toUpperCase()}
+      </div>
+      <div class="constraint-ack">"${r.acknowledgement}"</div>
+      <div class="constraint-reframe">${r.reframe}</div>
+      ${r.adjusted_approach ? `<div class="constraint-label">Adjusted approach</div><div style="font-size:12px;color:var(--text-2)">${r.adjusted_approach}</div>` : ''}
+      ${r.questions_to_ask?.length ? `
+        <div class="constraint-label">Questions to ask</div>
+        <ul class="constraint-list">${r.questions_to_ask.map(q=>`<li>${q}</li>`).join('')}</ul>` : ''}
+      ${r.tradeoffs?.length ? `
+        <div class="constraint-label">Tradeoffs</div>
+        <ul class="constraint-list">${r.tradeoffs.map(t=>`<li>${t}</li>`).join('')}</ul>` : ''}
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div style="margin-bottom:12px;padding:10px 14px;background:var(--ink-3);border-radius:var(--r);font-size:13px;color:var(--text-2)">
+      <strong style="color:var(--text)">Engagement strategy:</strong> ${data.overall_strategy}
+    </div>
+    ${data.red_flags?.length ? `
+      <div class="flag-list" style="margin-bottom:12px">
+        ${data.red_flags.map(f=>`<div class="flag-item red-flag"><span class="flag-icon">🚩</span>${f}</div>`).join('')}
+      </div>` : ''}
+    ${constraintHtml}`;
+}
+
+// ── ARCHITECTURE OPTIONS ──────────────────────────────────────
+async function runArchOptions() {
+  if(!state.gapsDone) { alert('Run gap analysis first'); return; }
+  const btn = document.getElementById('run-arch-btn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  const el = document.getElementById('arch-content');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Generating 4 alternative architecture paths…</div>';
+
+  try {
+    const res = await fetch(`${API}/api/v1/advanced/${sessionId}/architecture-options`, {method:'POST'});
+    const data = await res.json();
+    renderArchOptions(data);
+    state.archDone = true;
+    setBadge('architecture', 'DONE', 'done');
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--red);font-size:13px">Error: ${e.message}</div>`;
+  }
+  btn.disabled = false; btn.textContent = 'Regenerate';
+}
+
+function renderArchOptions(data) {
+  const el = document.getElementById('arch-content');
+  const costColor = {low:'var(--green)',medium:'var(--blue)',high:'var(--amber)','very-high':'var(--red)'};
+  const burdenColor = {low:'var(--green)',medium:'var(--blue)',high:'var(--amber)'};
+
+  const optHtml = (data.options||[]).map(o => `
+    <div class="option-card">
+      <div class="option-letter">Option ${o.option}</div>
+      <div class="option-label">${o.label}</div>
+      <div class="option-headline">${o.headline}</div>
+      <div class="option-meta">
+        <div class="option-stat">
+          <div class="option-stat-label">Cost</div>
+          <div class="option-stat-val" style="color:${costColor[o.cost_tier]||'var(--text)'}">${o.cost_tier}</div>
+        </div>
+        <div class="option-stat">
+          <div class="option-stat-label">Ops burden</div>
+          <div class="option-stat-val" style="color:${burdenColor[o.operational_burden]||'var(--text)'}">${o.operational_burden}</div>
+        </div>
+        <div class="option-stat">
+          <div class="option-stat-label">Time to value</div>
+          <div class="option-stat-val">${o.time_to_value_weeks}w</div>
+        </div>
+        <div class="option-stat">
+          <div class="option-stat-label">Vendors</div>
+          <div class="option-stat-val" style="font-size:11px">${(o.primary_vendors||[]).join(', ')}</div>
+        </div>
+      </div>
+      <div class="option-risk">⚠ Risk accepted: ${o.risk_accepted}</div>
+      ${o.when_to_choose ? `<div class="option-when">✓ Choose when: ${o.when_to_choose}</div>` : ''}
+    </div>`).join('');
+
+  const matrixHtml = (data.decision_matrix||[]).length ? `
+    <div class="panel" style="margin-top:14px">
+      <div class="panel-head"><span class="panel-title">// Decision Matrix</span></div>
+      <div class="panel-body" style="padding:0">
+        <table class="matrix-table">
+          <thead><tr><th>Dimension</th><th>A</th><th>B</th><th>C</th><th>D</th></tr></thead>
+          <tbody>${data.decision_matrix.map(row=>`
+            <tr><td>${row.dimension}</td><td>${row.A}</td><td>${row.B}</td><td>${row.C}</td><td>${row.D}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : '';
+
+  el.innerHTML = `
+    <div style="margin-bottom:14px;font-size:13px;color:var(--text-2);padding:10px 14px;background:var(--ink-3);border-radius:var(--r)">
+      <strong style="color:var(--text)">SE recommendation:</strong> ${data.recommendation}
+    </div>
+    <div class="options-grid">${optHtml}</div>
+    ${matrixHtml}`;
+}
+
+// ── STAKEHOLDERS ──────────────────────────────────────────────
+async function runStakeholders() {
+  if(!state.recsDone) { alert('Run recommendations first'); return; }
+  const btn = document.getElementById('run-stake-btn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  const el = document.getElementById('stakeholders-content');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Generating stakeholder briefs…</div>';
+
+  try {
+    const res = await fetch(`${API}/api/v1/advanced/${sessionId}/stakeholders`, {method:'POST'});
+    const data = await res.json();
+    renderStakeholders(data);
+    state.stakeDone = true;
+    setBadge('stakeholders', 'DONE', 'done');
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--red);font-size:13px">Error: ${e.message}</div>`;
+  }
+  btn.disabled = false; btn.textContent = 'Regenerate';
+}
+
+function renderStakeholders(data) {
+  const el = document.getElementById('stakeholders-content');
+
+  const html = (data.stakeholders||[]).map(s => `
+    <div class="stakeholder-item">
+      <div class="stakeholder-role">${s.role}</div>
+      <div class="stakeholder-concern">${s.profile?.primary_concern||''}</div>
+      <div class="stakeholder-message">${s.key_message}</div>
+      ${s.supporting_points?.length ? `
+        <ul class="constraint-list" style="margin-bottom:8px">
+          ${s.supporting_points.map(p=>`<li>${p}</li>`).join('')}
+        </ul>` : ''}
+      <div class="stakeholder-objection">Likely objection: "${s.likely_objection}"</div>
+      <div class="stakeholder-response">${s.objection_response}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+        <span class="stakeholder-content">Send: ${s.recommended_content}</span>
+        ${s.meeting_agenda?.length ? `
+          <button onclick="showAgenda('${s.role}', ${JSON.stringify(s.meeting_agenda).replace(/'/g,"\\'")})"
+            style="font-size:11px;color:var(--blue);background:none;border:none;cursor:pointer;font-family:var(--mono)">
+            View 30-min agenda →
+          </button>` : ''}
+      </div>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div style="margin-bottom:12px;padding:10px 14px;background:var(--ink-3);border-radius:var(--r);font-size:13px;color:var(--text-2)">
+      <strong style="color:var(--text)">Recommended sequence:</strong> ${data.recommended_sequence}
+    </div>
+    ${html}`;
+}
+
+function showAgenda(role, agenda) {
+  alert(`30-min agenda for ${role}:\n\n${agenda.map((a,i)=>`${i+1}. ${a}`).join('\n')}`);
+}
+
+// ── DEAL RISK ─────────────────────────────────────────────────
+async function runDealRisk() {
+  if(!state.gapsDone) { alert('Run gap analysis first'); return; }
+  const btn = document.getElementById('run-risk-btn');
+  btn.disabled = true; btn.textContent = 'Assessing…';
+  const el = document.getElementById('dealrisk-content');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Assessing technical, adoption, migration, organisational, and timeline risk…</div>';
+
+  try {
+    const res = await fetch(`${API}/api/v1/advanced/${sessionId}/deal-risk`, {method:'POST'});
+    const data = await res.json();
+    renderDealRisk(data);
+    state.riskDone = true;
+    setBadge('dealrisk', 'DONE', 'done');
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--red);font-size:13px">Error: ${e.message}</div>`;
+  }
+  btn.disabled = false; btn.textContent = 'Re-assess';
+}
+
+function renderDealRisk(data) {
+  const el = document.getElementById('dealrisk-content');
+  const ratingCls = {'low':'rr-low','medium':'rr-medium','high':'rr-high','very-high':'rr-very-high'};
+  const goClass = data.go_no_go_assessment?.startsWith('PROCEED — risk') ? 'proceed'
+    : data.go_no_go_assessment?.startsWith('PROCEED WITH') ? 'caution' : 'stop';
+  const sevColor = {critical:'st-critical',high:'st-high',medium:'st-medium',low:'st-medium'};
+
+  const risksHtml = (data.risks||[]).map(r => `
+    <div class="risk-item">
+      <div class="risk-item-header">
+        <span class="risk-item-title">${r.title}</span>
+        <span class="sev-tag ${sevColor[r.severity]||'st-medium'}">${r.severity?.toUpperCase()}</span>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--text-3)">${r.category}</span>
+        ${r.requires_exec_sponsorship ? '<span class="exec-badge">EXEC NEEDED</span>' : ''}
+      </div>
+      <div class="risk-mitigation">Mitigation: ${r.mitigation}</div>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="risk-score-display">
+      <div>
+        <div class="risk-score-num" style="color:${data.overall_risk_score>=7?'var(--red)':data.overall_risk_score>=5?'var(--amber)':'var(--green)'}">
+          ${data.overall_risk_score}/10
+        </div>
+        <div class="risk-score-label">Risk Score</div>
+      </div>
+      <div style="flex:1">
+        <span class="risk-rating ${ratingCls[data.risk_rating]||'rr-medium'}">${(data.risk_rating||'').toUpperCase()}</span>
+        <div style="font-size:12px;color:var(--text-2);margin-top:6px">${data.risks?.length||0} risk factors identified</div>
+      </div>
+    </div>
+
+    <div class="go-nogo ${goClass}" style="margin-bottom:14px">
+      <strong>Go / No-Go:</strong> ${data.go_no_go_assessment}
+    </div>
+
+    ${data.red_flags?.length ? `
+      <div class="flag-list" style="margin-bottom:12px">
+        ${data.red_flags.map(f=>`<div class="flag-item red-flag"><span class="flag-icon">🚩</span>${f}</div>`).join('')}
+      </div>` : ''}
+    ${data.green_flags?.length ? `
+      <div class="flag-list" style="margin-bottom:12px">
+        ${data.green_flags.map(f=>`<div class="flag-item green-flag"><span class="flag-icon">✓</span>${f}</div>`).join('')}
+      </div>` : ''}
+
+    <div style="font-family:var(--mono);font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Risk breakdown</div>
+    <div>${risksHtml}</div>`;
+}
+
+// ── EXECUTIVE SUMMARY ─────────────────────────────────────────
+async function runExecutiveSummary() {
+  if(!state.recsDone) { alert('Run recommendations first'); return; }
+  const btn = document.getElementById('run-exec-btn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  const el = document.getElementById('executive-content');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Generating executive summary…</div>';
+
+  try {
+    const res = await fetch(`${API}/api/v1/executive/${sessionId}/generate`, {method:'POST'});
+    const data = await res.json();
+    renderExecutive(data);
+    state.execDone = true;
+    setBadge('executive', 'DONE', 'done');
+    document.getElementById('status-pill').textContent = 'COMPLETE';
+    document.getElementById('status-pill').className = 'status-pill sp-complete';
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--red);font-size:13px">Error: ${e.message}</div>`;
+  }
+  btn.disabled = false; btn.textContent = 'Regenerate';
+}
+
+function renderExecutive(data) {
+  const el = document.getElementById('executive-content');
+  const urgCls = {immediate:'ur-immediate','30-days':'ur-30','90-days':'ur-90'};
+
+  const risksHtml = (data.key_risks||[]).map(r => `
+    <div class="risk-key-item">
+      <span class="risk-urgency ${urgCls[r.urgency]||'ur-90'}">${(r.urgency||'').toUpperCase()}</span>
+      <div>
+        <div style="font-size:13px;font-weight:500;color:var(--text)">${r.risk}</div>
+        <div style="font-size:12px;color:var(--text-2)">${r.business_impact}</div>
+      </div>
+    </div>`).join('');
+
+  const roadmapHtml = (data.roadmap||[]).map(p => `
+    <div class="roadmap-phase">
+      <div class="phase-header">
+        <span class="phase-num">Phase ${p.phase}</span>
+        <span class="phase-duration">${p.duration}</span>
+      </div>
+      <div class="phase-title">${p.title}</div>
+      <ul class="phase-objectives">
+        ${(p.objectives||[]).map(o=>`<li>${o}</li>`).join('')}
+      </ul>
+      ${p.vendors?.length ? `<div style="margin-top:6px;font-size:11px;color:var(--text-3)">Vendors: ${p.vendors.join(', ')}</div>` : ''}
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="exec-section">
+      <div class="exec-section-title">Overview</div>
+      <div class="exec-overview">${data.executive_overview}</div>
+    </div>
+    <div class="exec-section">
+      <div class="exec-section-title">Key Risks</div>
+      <div>${risksHtml}</div>
+    </div>
+    <div class="exec-section">
+      <div class="exec-section-title">Implementation Roadmap</div>
+      <div>${roadmapHtml}</div>
+    </div>
+    ${data.top_vendor_recommendations?.length ? `
+      <div class="exec-section">
+        <div class="exec-section-title">Vendor Recommendations</div>
+        <ul class="constraint-list">
+          ${data.top_vendor_recommendations.map(v=>`<li style="font-size:13px;color:var(--text-2)">${v}</li>`).join('')}
+        </ul>
+      </div>` : ''}
+    <div class="exec-section">
+      <div class="exec-section-title">Next Steps</div>
+      <ul class="constraint-list">
+        ${(data.next_steps||[]).map(s=>`<li style="font-size:13px;color:var(--text-2)">${s}</li>`).join('')}
+      </ul>
+    </div>
+    <div style="margin-top:16px;padding:10px 14px;background:var(--ink-3);border-radius:var(--r);display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:12px;color:var(--text-2)">Investment estimate: <strong style="color:var(--text)">${data.estimated_total_investment||'TBD'}</strong></span>
+      <button onclick="window.print()" style="font-family:var(--mono);font-size:11px;padding:5px 12px;border-radius:var(--r);border:1px solid var(--rule);background:transparent;color:var(--text-2);cursor:pointer">
+        Print / Export PDF
+      </button>
+    </div>`;
+}
+</script>
+</body>
+</html>

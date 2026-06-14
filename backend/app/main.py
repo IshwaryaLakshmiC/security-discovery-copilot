@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.core.config import get_settings
-from app.api import sessions, discovery, gaps, recommendations, executive
+from app.api import sessions, discovery, gaps, recommendations, executive, advanced
 
 settings = get_settings()
 
@@ -27,6 +27,7 @@ app.include_router(discovery.router, prefix="/api/v1/discovery", tags=["discover
 app.include_router(gaps.router, prefix="/api/v1/gaps", tags=["gap-analysis"])
 app.include_router(recommendations.router, prefix="/api/v1/recommendations", tags=["recommendations"])
 app.include_router(executive.router, prefix="/api/v1/executive", tags=["executive"])
+app.include_router(advanced.router, prefix="/api/v1/advanced", tags=["advanced-se"])
 
 
 @app.get("/health")
