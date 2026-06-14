@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # Local PostgreSQL with pgvector (for development without AWS RDS)
+  postgres:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_DB: governance_copilot
+      POSTGRES_USER: copilot_admin
+      POSTGRES_PASSWORD: localdev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U copilot_admin -d governance_copilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "8001:8001"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: governance_copilot
+      DB_USER: copilot_admin
+      DB_PASSWORD: localdev
+      AWS_REGION: us-east-1
+      FRONTEND_URL: http://localhost:3000
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: http://localhost:8001
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

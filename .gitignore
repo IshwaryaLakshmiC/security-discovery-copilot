@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Environment
+.env
+!.env.example
+
+# Node
+node_modules/
+dist/
+.next/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Terraform (if any)
+*.tfstate
+*.tfvars
+!*.tfvars.example
+
+# Logs
+*.log
+logs/
