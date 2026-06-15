@@ -8,11 +8,11 @@ class Settings(BaseSettings):
     app_name: str = "Security Discovery Copilot"
     debug: bool = False
 
-    # Database (shared RDS from aws-governance-copilot-infra)
+    # Database (shared RDS from cloud-security-platform-infra)
     db_host: str = os.getenv("DB_HOST", "localhost")
     db_port: int = int(os.getenv("DB_PORT", "5432"))
-    db_name: str = os.getenv("DB_NAME", "governance_copilot")
-    db_user: str = os.getenv("DB_USER", "copilot_admin")
+    db_name: str = os.getenv("DB_NAME", "cloud_security_platform")
+    db_user: str = os.getenv("DB_USER", "platform_admin")
     db_password: str = os.getenv("DB_PASSWORD", "")
 
     @property
