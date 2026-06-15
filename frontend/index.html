@@ -406,7 +406,7 @@ body{background:var(--ink);color:var(--text);font-family:var(--sans);font-size:1
 </div><!-- end shell -->
 
 <script>
-const API = 'http://localhost:8001';
+const API = localStorage.getItem('discovery_api_url') || 'http://localhost:8001';
 let sessionId = null;
 let currentView = 'discovery';
 let discoveryComplete = false;
