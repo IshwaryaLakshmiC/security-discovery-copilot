@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+import os
 from app.core.config import get_settings
 from app.api import sessions, discovery, gaps, recommendations, executive, advanced
 
@@ -15,7 +17,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url, "http://localhost:3000", "https://ishwaryaaunfiltered.live"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -78,3 +80,13 @@ async def get_scenarios():
             }
         ]
     }
+
+
+# Serve frontend at /ui — same pattern as governance copilot
+frontend_dir = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
+if os.path.exists(frontend_dir):
+    app.mount("/ui", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+
+    @app.get("/")
+    async def root():
+        return FileResponse(os.path.join(frontend_dir, "index.html"))
