@@ -119,15 +119,34 @@ class LLMClient:
                 },
                 timeout=60.0
             ) as response:
+                if response.status_code != 200:
+                    error_body = await response.aread()
+                    error_text = error_body.decode("utf-8", errors="ignore")
+                    print(f"OpenRouter error {response.status_code}: {error_text}")
+                    yield f"[Error: OpenRouter returned {response.status_code}. {error_text[:200]}]"
+                    return
+
+                got_any_content = False
                 async for line in response.aiter_lines():
                     if line.startswith("data: ") and line != "data: [DONE]":
                         try:
                             data = json.loads(line[6:])
+                            if "error" in data:
+                                print(f"OpenRouter inline error: {data['error']}")
+                                yield f"[Error: {data['error'].get('message', 'unknown error')}]"
+                                return
                             delta = data["choices"][0].get("delta", {})
                             if "content" in delta and delta["content"]:
+                                got_any_content = True
                                 yield delta["content"]
-                        except Exception:
-                            pass
+                        except json.JSONDecodeError as e:
+                            print(f"OpenRouter SSE parse error: {e} | line: {line[:200]}")
+                        except Exception as e:
+                            print(f"OpenRouter unexpected error: {e} | line: {line[:200]}")
+
+                if not got_any_content:
+                    print("OpenRouter stream completed with zero content chunks")
+                    yield "[No response generated — the model may have returned empty content. Try again.]"
 
 
 def get_llm_client() -> LLMClient:
