@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     # OpenRouter (fallback)
     openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
     openrouter_model: str = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
+    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
     # Frontend URL
     frontend_url: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
