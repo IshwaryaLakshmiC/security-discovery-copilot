@@ -406,7 +406,24 @@ body{background:var(--ink);color:var(--text);font-family:var(--sans);font-size:1
 </div><!-- end shell -->
 
 <script>
-const API = localStorage.getItem('discovery_api_url') || 'http://localhost:8001';
+// Auto-detect API base from how this page was loaded:
+// - If served via Nginx at /discovery/ui, API calls go to same origin + /discovery
+// - If served directly on :8001/ui, API calls go to same origin (no path prefix)
+// - localStorage override still works for manual local dev (e.g. localhost:8001 backend, file:// frontend)
+function _detectApiBase() {
+  const stored = localStorage.getItem('discovery_api_url');
+  if (stored) return stored;
+
+  const { protocol, host, pathname } = window.location;
+  if (pathname.startsWith('/discovery')) {
+    return `${protocol}//${host}/discovery`;
+  }
+  if (host !== '' && protocol !== 'file:') {
+    return `${protocol}//${host}`;
+  }
+  return 'http://localhost:8001'; // file:// fallback for local dev only
+}
+const API = _detectApiBase();
 let sessionId = null;
 let currentView = 'discovery';
 let discoveryComplete = false;
