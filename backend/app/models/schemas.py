@@ -92,7 +92,7 @@ class ExtractedEntities(BaseModel):
     architecture_type: Optional[str] = None # cloud|hybrid|on-prem
 
     # Domain confidence (0.0 - 1.0)
-    domain_confidence: Dict[str, float] = {}
+    domain_confidence: Dict[str, Optional[float]] = {}
 
 
 # ── Gap Analysis ──────────────────────────────────────────────
