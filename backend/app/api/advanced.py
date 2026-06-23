@@ -6,8 +6,8 @@ from app.engines.deal_risk import DealRiskEngine
 from app.engines.discovery import DiscoveryEngine
 from app.api.gaps import gap_results
 from app.api.recommendations import recommendation_results
-from app.api.discovery import session_messages
-from app.api.sessions import sessions_store
+from app.api.discovery import _load_messages
+from app.api.sessions import get_session_or_none
 
 router = APIRouter()
 
@@ -29,7 +29,7 @@ deal_risk_results: dict = {}
 @router.post("/{session_id}/objections")
 async def analyse_objections(session_id: str):
     """Detect constraints from transcript and generate SE responses"""
-    messages = session_messages.get(session_id, [])
+    messages = _load_messages(session_id)
     gap_analysis = gap_results.get(session_id)
     recs = recommendation_results.get(session_id)
 
@@ -59,7 +59,7 @@ async def get_objections(session_id: str):
 @router.post("/{session_id}/architecture-options")
 async def generate_architecture_options(session_id: str):
     """Generate 4 alternative architecture paths with tradeoff analysis"""
-    messages = session_messages.get(session_id, [])
+    messages = _load_messages(session_id)
     gap_analysis = gap_results.get(session_id)
 
     if not gap_analysis:
@@ -84,7 +84,7 @@ async def get_architecture_options(session_id: str):
 @router.post("/{session_id}/stakeholders")
 async def analyse_stakeholders(session_id: str):
     """Generate stakeholder-specific messaging and meeting agendas"""
-    session = sessions_store.get(session_id)
+    session = await get_session_or_none(session_id)
     gap_analysis = gap_results.get(session_id)
     recs = recommendation_results.get(session_id)
 
@@ -117,7 +117,7 @@ async def get_stakeholders(session_id: str):
 @router.post("/{session_id}/deal-risk")
 async def assess_deal_risk(session_id: str):
     """Full deal risk assessment — technical, adoption, migration, organisational, timeline"""
-    messages = session_messages.get(session_id, [])
+    messages = _load_messages(session_id)
     gap_analysis = gap_results.get(session_id)
 
     if not gap_analysis:
@@ -144,7 +144,7 @@ async def get_deal_risk(session_id: str):
 @router.post("/{session_id}/full-analysis")
 async def run_full_analysis(session_id: str):
     """Run all 4 new engines in sequence — returns complete SE package"""
-    messages = session_messages.get(session_id, [])
+    messages = _load_messages(session_id)
     gap_analysis = gap_results.get(session_id)
     recs = recommendation_results.get(session_id)
 
