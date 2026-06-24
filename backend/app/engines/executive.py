@@ -8,6 +8,7 @@ are all deterministic — only the language generation is AI.
 """
 
 from app.core.llm import get_llm_client
+from app.core.json_utils import extract_json_object
 from app.models.schemas import (
     GapAnalysis, RecommendationSet, ExecutiveSummary,
     RoadmapPhase, Session
@@ -125,8 +126,7 @@ Return ONLY valid JSON with this exact schema:
         response = await self.llm.complete(EXECUTIVE_SYSTEM_PROMPT, messages, max_tokens=3000)
 
         try:
-            cleaned = response.replace("```json", "").replace("```", "").strip()
-            data = json.loads(cleaned)
+            data = extract_json_object(response)
 
             roadmap = [RoadmapPhase(**phase) for phase in data.get("roadmap", [])]
 
@@ -145,5 +145,5 @@ Return ONLY valid JSON with this exact schema:
                 generated_at=datetime.utcnow()
             )
         except Exception as e:
-            print(f"Executive summary parse error: {e}")
+            print(f"Executive summary parse error: {e} | raw response: {response[:500]}")
             raise ValueError(f"Failed to generate executive summary: {e}")

@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException
-from app.api.gaps import gap_results
+from app.api.gaps import get_gap_results_or_none
 from app.core.llm import get_llm_client
+from app.core.database import execute
+from app.core.json_utils import extract_json_array
 from app.models.schemas import RecommendationSet, VendorRecommendation, Domain
 from datetime import datetime
 import json
@@ -112,7 +114,7 @@ Return ONLY valid JSON as an array of recommendations:
 @router.post("/{session_id}/generate")
 async def generate_recommendations(session_id: str):
     """Generate RAG-grounded vendor recommendations from gap analysis"""
-    gap_analysis = gap_results.get(session_id)
+    gap_analysis = get_gap_results_or_none(session_id)
     if not gap_analysis:
         raise HTTPException(status_code=404, detail="Run gap analysis first")
 
@@ -145,8 +147,7 @@ Generate vendor recommendations for this customer."""
     response = await llm.complete(RECOMMENDATION_SYSTEM_PROMPT, messages, max_tokens=3000)
 
     try:
-        cleaned = response.replace("```json", "").replace("```", "").strip()
-        data = json.loads(cleaned)
+        data = extract_json_array(response)
 
         vendor_recs = []
         for item in data:
@@ -175,15 +176,37 @@ Generate vendor recommendations for this customer."""
             generated_at=datetime.utcnow()
         )
         recommendation_results[session_id] = result
+
+        execute("""
+            INSERT INTO recommendation_results (session_id, recommendations, generated_at)
+            VALUES (%s, %s, NOW())
+        """, (
+            session_id,
+            json.dumps([r.model_dump() for r in result.recommendations]),
+        ))
+
         return result
 
     except Exception as e:
+        print(f"Recommendation generation parse error: {e} | raw response: {response[:500]}")
         raise HTTPException(status_code=500, detail=f"Recommendation generation failed: {e}")
 
 
 @router.get("/{session_id}")
 async def get_recommendations(session_id: str):
-    result = recommendation_results.get(session_id)
-    if not result:
+    if session_id in recommendation_results:
+        return recommendation_results[session_id]
+
+    rows = execute("""
+        SELECT recommendations, generated_at FROM recommendation_results
+        WHERE session_id = %s ORDER BY generated_at DESC LIMIT 1
+    """, (session_id,), fetch=True)
+
+    if not rows:
         raise HTTPException(status_code=404, detail="No recommendations found")
-    return result
+
+    return {
+        "session_id": session_id,
+        "recommendations": rows[0]["recommendations"],
+        "generated_at": rows[0]["generated_at"],
+    }

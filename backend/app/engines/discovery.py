@@ -11,6 +11,7 @@ This encodes real SE discovery methodology:
 import json
 from typing import AsyncGenerator
 from app.core.llm import get_llm_client
+from app.core.json_utils import extract_json_object
 from app.models.schemas import ExtractedEntities, Message
 
 # The SE methodology system prompt — this is where domain expertise lives
@@ -169,34 +170,11 @@ class DiscoveryEngine:
         response = await self.llm.complete(EXTRACTION_SYSTEM_PROMPT, messages, max_tokens=1000)
 
         try:
-            data = self._extract_json_object(response)
+            data = extract_json_object(response)
             return ExtractedEntities(**data)
         except Exception as e:
             print(f"Entity extraction parse error: {e} | raw response: {response[:500]}")
             return ExtractedEntities()
-
-    def _extract_json_object(self, text: str) -> dict:
-        """Robustly extract a JSON object from an LLM response that may include
-        markdown fences, leading/trailing prose, or other non-JSON wrapper text.
-        Different providers (Claude, Llama via Groq, Gemini) format this differently."""
-        cleaned = text.strip()
-
-        # Strip markdown code fences if present
-        if "```json" in cleaned:
-            cleaned = cleaned.split("```json", 1)[1]
-        if "```" in cleaned:
-            cleaned = cleaned.split("```")[0] if cleaned.strip().startswith("```") is False else cleaned
-            cleaned = cleaned.replace("```", "")
-
-        # Find the first { and last } to strip any prose wrapper
-        # e.g. "Here's the extracted information:\n\n{...}\n\nLet me know if..."
-        start = cleaned.find("{")
-        end = cleaned.rfind("}")
-        if start == -1 or end == -1 or end < start:
-            raise ValueError(f"No JSON object found in response")
-
-        json_str = cleaned[start:end + 1]
-        return json.loads(json_str)
 
     def is_discovery_complete(self, messages: list[Message]) -> bool:
         """Check if the assistant has signalled completion"""

@@ -162,63 +162,97 @@ def detect_gaps(entities: ExtractedEntities) -> list[Gap]:
     """Deterministic gap detection from extracted entities"""
     detected = []
 
-    # SCIM / provisioning gap
+def _mentions_any(raw_gaps: list[str], keywords: list[str]) -> bool:
+    """Proper substring matching -- checks if ANY keyword appears as a
+    substring of ANY raw_gap phrase. The previous implementation used
+    `keyword in raw_gaps`, which checks for exact list membership, not
+    substring matching -- so 'no scim' never matched 'no scim automation'
+    even though one obviously implies the other. This was the root cause
+    of gap analysis silently falling through to generic defaults (CSPM,
+    EDR) regardless of what was actually discussed in the conversation."""
+    haystack = " | ".join(g.lower() for g in raw_gaps)
+    return any(kw.lower() in haystack for kw in keywords)
+
+
+def detect_gaps(entities: ExtractedEntities) -> list[Gap]:
+    """Deterministic gap detection from extracted entities"""
+    detected = []
+
+    # SCIM / provisioning gap -- broadened to match how customers actually
+    # describe this in conversation, not just security-jargon phrasing
     if "okta" in entities.identity_tools or "azure_ad" in entities.identity_tools:
-        if any(g in entities.raw_gaps for g in [
-            "manual", "no scim", "manual provisioning", "manual onboarding",
-            "no automation", "manual deprovisioning"
+        if _mentions_any(entities.raw_gaps, [
+            "manual", "no scim", "scim", "provisioning", "onboarding",
+            "no automation", "deprovisioning", "offboarding", "manually",
+            "go in and set up", "kill their access", "days to", "days for"
         ]):
             detected.append(GAP_LIBRARY["no_scim_automation"])
 
-    # MFA gap
-    if any(g in entities.raw_gaps for g in [
-        "no mfa", "mfa not enforced", "partial mfa", "sms mfa", "no 2fa"
+    # MFA gap -- broadened to catch "don't know our coverage" framing,
+    # which is itself a finding (no governance visibility), not just
+    # explicit "no MFA" statements
+    if _mentions_any(entities.raw_gaps, [
+        "no mfa", "mfa not enforced", "partial mfa", "sms mfa", "no 2fa",
+        "mfa coverage", "couldn't give you an accurate", "don't have visibility",
+        "no visibility into", "uncomfortable to admit", "near-miss",
+        "credential stuffing", "credential-stuffing"
     ]):
         detected.append(GAP_LIBRARY["low_mfa_coverage"])
 
     # PAM gap
-    if any(g in entities.raw_gaps for g in [
+    if _mentions_any(entities.raw_gaps, [
         "no pam", "shared admin", "no privileged access", "no session recording",
-        "shared credentials", "no jit", "no just-in-time"
+        "shared credentials", "no jit", "no just-in-time", "standing access",
+        "domain admin", "global admin", "no pim", "unconfigured"
     ]):
-        if "shared_credentials" in " ".join(entities.raw_gaps):
+        if _mentions_any(entities.raw_gaps, ["shared credentials", "shared admin"]):
             detected.append(GAP_LIBRARY["shared_admin_credentials"])
         else:
             detected.append(GAP_LIBRARY["no_pam"])
 
     # VPN / Zero Trust gap
-    if any(g in entities.raw_gaps for g in [
-        "vpn", "no zero trust", "no ztna", "legacy vpn", "vpn dependent"
+    if _mentions_any(entities.raw_gaps, [
+        "vpn", "no zero trust", "no ztna", "legacy vpn", "vpn dependent", "vpn-dependent"
     ]):
         detected.append(GAP_LIBRARY["vpn_dependency"])
 
-    # CSPM gap
+    # CSPM gap -- only fires if cloud platforms were actually discussed
+    # AND no CSPM/security tooling was named, not as a blanket default
     if entities.cloud_platforms and not any(
         t in entities.security_tools for t in ["wiz", "prisma", "lacework", "orca", "defender"]
     ):
         detected.append(GAP_LIBRARY["no_cspm"])
 
-    # Low app federation
-    if any(g in entities.raw_gaps for g in [
-        "password vault", "low federation", "password vaulting", "manual password"
+    # Low app federation -- broadened to match the actual percentage-based
+    # framing customers use ("40% federated", "the rest hang off on-prem")
+    if _mentions_any(entities.raw_gaps, [
+        "password vault", "low federation", "password vaulting", "manual password",
+        "federated", "federation", "% federated", "own logins", "standalone",
+        "not connected", "hang off on-prem"
     ]):
         detected.append(GAP_LIBRARY["no_low_app_federation"])
 
     # Audit logging gap
-    if any(g in entities.raw_gaps for g in [
+    if _mentions_any(entities.raw_gaps, [
         "no cloudtrail", "no audit log", "incomplete logging", "no logging"
     ]):
         detected.append(GAP_LIBRARY["no_cloudtrail"])
 
     # IGA gap
-    if any(g in entities.raw_gaps for g in [
+    if _mentions_any(entities.raw_gaps, [
         "no access review", "no iga", "no governance", "access creep",
         "no certification", "manual access review"
     ]):
         detected.append(GAP_LIBRARY["no_iga"])
 
-    # EDR gap
-    if not any(t in entities.security_tools for t in [
+    # EDR gap -- now requires endpoint security to have been discussed at
+    # all (positive evidence of relevance), rather than firing by default
+    # whenever no specific EDR vendor happens to be named. Previously this
+    # fired unconditionally on every transcript regardless of topic.
+    endpoint_discussed = _mentions_any(entities.raw_gaps, [
+        "endpoint", "antivirus", "edr", "device", "laptop", "workstation"
+    ])
+    if endpoint_discussed and not any(t in entities.security_tools for t in [
         "crowdstrike", "sentinelone", "defender", "carbon black", "edr"
     ]):
         detected.append(GAP_LIBRARY["no_edr"])
@@ -245,22 +279,34 @@ def detect_gaps(entities: ExtractedEntities) -> list[Gap]:
 def score_maturity(entities: ExtractedEntities) -> dict[str, MaturityScore]:
     scores = {}
 
-    # IAM maturity
+    # IAM maturity -- now reads the SAME detected gaps as detect_gaps(),
+    # rather than re-deriving (incorrectly) from raw string checks against
+    # gap IDs that never appear in raw_gaps in the first place.
+    detected_gap_ids = {g.id for g in detect_gaps(entities)}
+
     iam_score = 1
     if entities.identity_tools:
         iam_score = 2
     if "okta" in entities.identity_tools or "azure_ad" in entities.identity_tools:
         iam_score = 3
-    if iam_score == 3 and "no_scim_automation" not in [g for g in entities.raw_gaps]:
+    if iam_score == 3 and "no_scim_automation" not in detected_gap_ids:
         iam_score = 4
-    if iam_score >= 3 and not any("no mfa" in g for g in entities.raw_gaps):
+    if iam_score >= 3 and "low_mfa_coverage" not in detected_gap_ids:
         iam_score = min(5, iam_score + 1)
+
+    iam_evidence = entities.identity_tools.copy() if entities.identity_tools else []
+    if "no_scim_automation" in detected_gap_ids:
+        iam_evidence.append("manual/inconsistent provisioning identified in discovery")
+    if "low_mfa_coverage" in detected_gap_ids:
+        iam_evidence.append("MFA coverage gap or visibility gap identified in discovery")
 
     scores["iam"] = MaturityScore(
         domain=Domain.IAM,
         score=MaturityLevel(iam_score),
-        rationale=f"Identity tooling present: {', '.join(entities.identity_tools) or 'none detected'}",
-        evidence=entities.identity_tools
+        rationale=f"Identity tooling present: {', '.join(entities.identity_tools) or 'none detected'}"
+                  f"{'. Provisioning is manual/inconsistent.' if 'no_scim_automation' in detected_gap_ids else ''}"
+                  f"{'. MFA coverage has gaps or no visibility.' if 'low_mfa_coverage' in detected_gap_ids else ''}",
+        evidence=iam_evidence
     )
 
     # Cloud security maturity
@@ -283,13 +329,14 @@ def score_maturity(entities: ExtractedEntities) -> dict[str, MaturityScore]:
     zt_score = 1
     if any(t in entities.network_tools for t in ["zscaler", "cloudflare", "netskope"]):
         zt_score = 3
-    if "vpn" in " ".join(entities.raw_gaps).lower():
+    if "vpn_dependency" in detected_gap_ids:
         zt_score = max(1, zt_score - 1)
 
     scores["zerotrust"] = MaturityScore(
         domain=Domain.ZEROTRUST,
         score=MaturityLevel(zt_score),
-        rationale=f"ZTNA tooling: {', '.join(entities.network_tools) or 'none'}",
+        rationale=f"ZTNA tooling: {', '.join(entities.network_tools) or 'none'}"
+                  f"{'. VPN-dependent access model identified.' if 'vpn_dependency' in detected_gap_ids else ''}",
         evidence=entities.network_tools
     )
 

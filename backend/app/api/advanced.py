@@ -4,10 +4,12 @@ from app.engines.architecture_options import ArchitectureOptionsEngine
 from app.engines.stakeholder_engine import StakeholderEngine
 from app.engines.deal_risk import DealRiskEngine
 from app.engines.discovery import DiscoveryEngine
-from app.api.gaps import gap_results
-from app.api.recommendations import recommendation_results
+from app.api.gaps import get_gap_results_or_none
+from app.api.recommendations import get_recommendations as _get_recs_route
 from app.api.discovery import _load_messages
 from app.api.sessions import get_session_or_none
+from app.core.database import execute
+import json
 
 router = APIRouter()
 
@@ -17,11 +19,53 @@ stakeholder_engine = StakeholderEngine()
 deal_risk_engine = DealRiskEngine()
 discovery_engine = DiscoveryEngine()
 
-# In-memory stores for new outputs
+# In-memory cache. RDS (advanced_analysis table) is the source of truth,
+# discriminated by analysis_type. Every store/load below mirrors the
+# pattern already proven in sessions.py / discovery.py / gaps.py.
 objection_results: dict = {}
 arch_options_results: dict = {}
 stakeholder_results: dict = {}
 deal_risk_results: dict = {}
+
+
+def _save(session_id: str, analysis_type: str, result) -> None:
+    payload = result.model_dump() if hasattr(result, "model_dump") else result
+    execute("""
+        INSERT INTO advanced_analysis (session_id, analysis_type, result, generated_at)
+        VALUES (%s, %s, %s, NOW())
+    """, (session_id, analysis_type, json.dumps(payload)))
+
+
+def _load(session_id: str, analysis_type: str, cache: dict):
+    if session_id in cache:
+        return cache[session_id]
+
+    rows = execute("""
+        SELECT result FROM advanced_analysis
+        WHERE session_id = %s AND analysis_type = %s
+        ORDER BY generated_at DESC LIMIT 1
+    """, (session_id, analysis_type), fetch=True)
+
+    if not rows:
+        return None
+
+    cache[session_id] = rows[0]["result"]
+    return cache[session_id]
+
+
+async def _get_recs_or_none(session_id: str):
+    """recommendations.py has no importable loader of its own yet (it returns
+    a FastAPI route response directly) -- read via the same cache/RDS pattern
+    used everywhere else instead of calling the route function directly."""
+    from app.api.recommendations import recommendation_results
+    if session_id in recommendation_results:
+        return recommendation_results[session_id]
+
+    rows = execute("""
+        SELECT recommendations FROM recommendation_results
+        WHERE session_id = %s ORDER BY generated_at DESC LIMIT 1
+    """, (session_id,), fetch=True)
+    return rows[0]["recommendations"] if rows else None
 
 
 # ── Objection Handling ────────────────────────────────────────
@@ -30,8 +74,8 @@ deal_risk_results: dict = {}
 async def analyse_objections(session_id: str):
     """Detect constraints from transcript and generate SE responses"""
     messages = _load_messages(session_id)
-    gap_analysis = gap_results.get(session_id)
-    recs = recommendation_results.get(session_id)
+    gap_analysis = get_gap_results_or_none(session_id)
+    recs = await _get_recs_or_none(session_id)
 
     if not messages:
         raise HTTPException(status_code=404, detail="No discovery transcript found")
@@ -43,12 +87,13 @@ async def analyse_objections(session_id: str):
     transcript_text = " ".join([m.content for m in messages])
     result = await objection_engine.analyse(session_id, transcript_text, gap_analysis, recs)
     objection_results[session_id] = result
+    _save(session_id, "objections", result)
     return result
 
 
 @router.get("/{session_id}/objections")
 async def get_objections(session_id: str):
-    result = objection_results.get(session_id)
+    result = _load(session_id, "objections", objection_results)
     if not result:
         raise HTTPException(status_code=404, detail="No objection analysis found")
     return result
@@ -60,7 +105,7 @@ async def get_objections(session_id: str):
 async def generate_architecture_options(session_id: str):
     """Generate 4 alternative architecture paths with tradeoff analysis"""
     messages = _load_messages(session_id)
-    gap_analysis = gap_results.get(session_id)
+    gap_analysis = get_gap_results_or_none(session_id)
 
     if not gap_analysis:
         raise HTTPException(status_code=400, detail="Run gap analysis first")
@@ -68,12 +113,13 @@ async def generate_architecture_options(session_id: str):
     entities = await discovery_engine.extract_entities(messages)
     result = await arch_options_engine.generate(session_id, gap_analysis, entities)
     arch_options_results[session_id] = result
+    _save(session_id, "arch_options", result)
     return result
 
 
 @router.get("/{session_id}/architecture-options")
 async def get_architecture_options(session_id: str):
-    result = arch_options_results.get(session_id)
+    result = _load(session_id, "arch_options", arch_options_results)
     if not result:
         raise HTTPException(status_code=404, detail="No architecture options found")
     return result
@@ -85,8 +131,8 @@ async def get_architecture_options(session_id: str):
 async def analyse_stakeholders(session_id: str):
     """Generate stakeholder-specific messaging and meeting agendas"""
     session = await get_session_or_none(session_id)
-    gap_analysis = gap_results.get(session_id)
-    recs = recommendation_results.get(session_id)
+    gap_analysis = get_gap_results_or_none(session_id)
+    recs = await _get_recs_or_none(session_id)
 
     if not gap_analysis:
         raise HTTPException(status_code=400, detail="Run gap analysis first")
@@ -101,12 +147,13 @@ async def analyse_stakeholders(session_id: str):
 
     result = await stakeholder_engine.analyse(session_id, gap_analysis, recs, company_context)
     stakeholder_results[session_id] = result
+    _save(session_id, "stakeholders", result)
     return result
 
 
 @router.get("/{session_id}/stakeholders")
 async def get_stakeholders(session_id: str):
-    result = stakeholder_results.get(session_id)
+    result = _load(session_id, "stakeholders", stakeholder_results)
     if not result:
         raise HTTPException(status_code=404, detail="No stakeholder analysis found")
     return result
@@ -116,24 +163,25 @@ async def get_stakeholders(session_id: str):
 
 @router.post("/{session_id}/deal-risk")
 async def assess_deal_risk(session_id: str):
-    """Full deal risk assessment — technical, adoption, migration, organisational, timeline"""
+    """Full deal risk assessment -- technical, adoption, migration, organisational, timeline"""
     messages = _load_messages(session_id)
-    gap_analysis = gap_results.get(session_id)
+    gap_analysis = get_gap_results_or_none(session_id)
 
     if not gap_analysis:
         raise HTTPException(status_code=400, detail="Run gap analysis first")
 
     entities = await discovery_engine.extract_entities(messages)
-    objections = objection_results.get(session_id)
+    objections = _load(session_id, "objections", objection_results)
 
     result = await deal_risk_engine.assess(session_id, gap_analysis, entities, objections)
     deal_risk_results[session_id] = result
+    _save(session_id, "deal_risk", result)
     return result
 
 
 @router.get("/{session_id}/deal-risk")
 async def get_deal_risk(session_id: str):
-    result = deal_risk_results.get(session_id)
+    result = _load(session_id, "deal_risk", deal_risk_results)
     if not result:
         raise HTTPException(status_code=404, detail="No deal risk assessment found")
     return result
@@ -143,10 +191,10 @@ async def get_deal_risk(session_id: str):
 
 @router.post("/{session_id}/full-analysis")
 async def run_full_analysis(session_id: str):
-    """Run all 4 new engines in sequence — returns complete SE package"""
+    """Run all 4 engines in sequence -- returns complete SE package"""
     messages = _load_messages(session_id)
-    gap_analysis = gap_results.get(session_id)
-    recs = recommendation_results.get(session_id)
+    gap_analysis = get_gap_results_or_none(session_id)
+    recs = await _get_recs_or_none(session_id)
 
     if not messages or not gap_analysis:
         raise HTTPException(status_code=400, detail="Complete discovery and gap analysis first")
@@ -154,17 +202,21 @@ async def run_full_analysis(session_id: str):
     entities = await discovery_engine.extract_entities(messages)
     transcript_text = " ".join([m.content for m in messages])
 
-    # Run all engines
     objections = await objection_engine.analyse(session_id, transcript_text, gap_analysis, recs) if recs else None
     arch_options = await arch_options_engine.generate(session_id, gap_analysis, entities)
     stakeholders = await stakeholder_engine.analyse(session_id, gap_analysis, recs, {}) if recs else None
     deal_risk = await deal_risk_engine.assess(session_id, gap_analysis, entities, objections)
 
-    # Store all
-    if objections: objection_results[session_id] = objections
+    if objections:
+        objection_results[session_id] = objections
+        _save(session_id, "objections", objections)
     arch_options_results[session_id] = arch_options
-    if stakeholders: stakeholder_results[session_id] = stakeholders
+    _save(session_id, "arch_options", arch_options)
+    if stakeholders:
+        stakeholder_results[session_id] = stakeholders
+        _save(session_id, "stakeholders", stakeholders)
     deal_risk_results[session_id] = deal_risk
+    _save(session_id, "deal_risk", deal_risk)
 
     return {
         "session_id": session_id,
