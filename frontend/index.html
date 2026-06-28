@@ -439,6 +439,25 @@ const state = {
   execDone: false,
 };
 
+// Shared fetch helper -- checks res.ok BEFORE parsing JSON, so a raw
+// 500 (HTML error page, not our clean HTTPException JSON) shows a
+// readable error instead of crashing with "Unexpected token... is not
+// valid JSON". Every panel's fetch should go through this.
+async function safeFetchJson(url, options = {}) {
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const errBody = await res.json();
+      detail = errBody.detail || detail;
+    } catch {
+      // Response wasn't JSON at all -- keep the status-code fallback
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
 function setBadge(key, text, cls='') {
   const el = document.getElementById(`badge-${key}`);
   if(!el) return;
@@ -464,11 +483,10 @@ function switchView(view) {
 
 // ── SESSION ────────────────────────────────────────────────────
 async function createSession(scenario_id=null, company_name='Prospect', industry=null, company_size=null) {
-  const res = await fetch(`${API}/api/v1/sessions/`, {
+  const data = await safeFetchJson(`${API}/api/v1/sessions/`, {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({scenario_id, company_name, industry, company_size})
   });
-  const data = await res.json();
   sessionId = data.id;
   document.getElementById('session-indicator').textContent = `Session: ${sessionId.slice(0,8)}`;
   return data;
@@ -597,8 +615,7 @@ async function runGapAnalysis() {
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Running deterministic gap analysis against CIS Controls, NIST CSF, SOC2, ISO27001…</div>';
 
   try {
-    const res = await fetch(`${API}/api/v1/gaps/${sessionId}/analyse`, {method:'POST'});
-    const data = await res.json();
+    const data = await safeFetchJson(`${API}/api/v1/gaps/${sessionId}/analyse`, {method:'POST'});
     renderGaps(data);
     state.gapsDone = true;
     setBadge('gaps', 'DONE', 'done');
@@ -663,8 +680,7 @@ async function runRecommendations() {
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Retrieving vendor capability data and reasoning over fit…</div>';
 
   try {
-    const res = await fetch(`${API}/api/v1/recommendations/${sessionId}/generate`, {method:'POST'});
-    const data = await res.json();
+    const data = await safeFetchJson(`${API}/api/v1/recommendations/${sessionId}/generate`, {method:'POST'});
     renderRecommendations(data);
     state.recsDone = true;
     setBadge('recommendations', 'DONE', 'done');
@@ -712,8 +728,7 @@ async function runObjections() {
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Scanning transcript for constraints and generating SE responses…</div>';
 
   try {
-    const res = await fetch(`${API}/api/v1/advanced/${sessionId}/objections`, {method:'POST'});
-    const data = await res.json();
+    const data = await safeFetchJson(`${API}/api/v1/advanced/${sessionId}/objections`, {method:'POST'});
     renderObjections(data);
     state.objDone = true;
     setBadge('objections', 'DONE', 'done');
@@ -770,8 +785,7 @@ async function runArchOptions() {
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Generating 4 alternative architecture paths…</div>';
 
   try {
-    const res = await fetch(`${API}/api/v1/advanced/${sessionId}/architecture-options`, {method:'POST'});
-    const data = await res.json();
+    const data = await safeFetchJson(`${API}/api/v1/advanced/${sessionId}/architecture-options`, {method:'POST'});
     renderArchOptions(data);
     state.archDone = true;
     setBadge('architecture', 'DONE', 'done');
@@ -843,8 +857,7 @@ async function runStakeholders() {
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Generating stakeholder briefs…</div>';
 
   try {
-    const res = await fetch(`${API}/api/v1/advanced/${sessionId}/stakeholders`, {method:'POST'});
-    const data = await res.json();
+    const data = await safeFetchJson(`${API}/api/v1/advanced/${sessionId}/stakeholders`, {method:'POST'});
     renderStakeholders(data);
     state.stakeDone = true;
     setBadge('stakeholders', 'DONE', 'done');
@@ -898,8 +911,7 @@ async function runDealRisk() {
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Assessing technical, adoption, migration, organisational, and timeline risk…</div>';
 
   try {
-    const res = await fetch(`${API}/api/v1/advanced/${sessionId}/deal-risk`, {method:'POST'});
-    const data = await res.json();
+    const data = await safeFetchJson(`${API}/api/v1/advanced/${sessionId}/deal-risk`, {method:'POST'});
     renderDealRisk(data);
     state.riskDone = true;
     setBadge('dealrisk', 'DONE', 'done');
@@ -967,8 +979,7 @@ async function runExecutiveSummary() {
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Generating executive summary…</div>';
 
   try {
-    const res = await fetch(`${API}/api/v1/executive/${sessionId}/generate`, {method:'POST'});
-    const data = await res.json();
+    const data = await safeFetchJson(`${API}/api/v1/executive/${sessionId}/generate`, {method:'POST'});
     renderExecutive(data);
     state.execDone = true;
     setBadge('executive', 'DONE', 'done');

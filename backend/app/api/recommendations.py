@@ -118,6 +118,22 @@ async def generate_recommendations(session_id: str):
     if not gap_analysis:
         raise HTTPException(status_code=404, detail="Run gap analysis first")
 
+    if not gap_analysis.gaps:
+        # No gaps means either a genuinely mature environment, or (more
+        # likely during a thin discovery conversation) entity extraction
+        # found nothing concrete to work with. Either way, sending an
+        # empty gap list to the LLM produces unpredictable prose instead
+        # of the JSON array we need -- fail clearly instead of crashing
+        # three panels downstream that all depend on this succeeding.
+        raise HTTPException(
+            status_code=400,
+            detail="No gaps were identified in the discovery conversation, so there's "
+                   "nothing concrete to generate vendor recommendations against. This "
+                   "usually means the discovery conversation needs more specific detail "
+                   "-- re-run discovery with more concrete answers, or check the gap "
+                   "analysis output directly."
+        )
+
     # Build gap context
     gap_context = [
         {"id": g.id, "title": g.title, "severity": g.severity, "domain": g.domain}
