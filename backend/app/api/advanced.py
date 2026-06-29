@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException
-from app.engines.objection_engine import ObjectionEngine
-from app.engines.architecture_options import ArchitectureOptionsEngine
-from app.engines.stakeholder_engine import StakeholderEngine
-from app.engines.deal_risk import DealRiskEngine
+from app.engines.objection_engine import ObjectionEngine, ObjectionAnalysis
+from app.engines.architecture_options import ArchitectureOptionsEngine, ArchitectureOptionsSet
+from app.engines.stakeholder_engine import StakeholderEngine, StakeholderAnalysis
+from app.engines.deal_risk import DealRiskEngine, DealRiskAssessment
 from app.engines.discovery import DiscoveryEngine
 from app.api.gaps import get_gap_results_or_none
 from app.api.recommendations import get_recommendations as _get_recs_route
@@ -37,7 +37,15 @@ def _save(session_id: str, analysis_type: str, result) -> None:
     """, (session_id, analysis_type, json.dumps(payload, default=json_default)))
 
 
-def _load(session_id: str, analysis_type: str, cache: dict):
+def _load(session_id: str, analysis_type: str, cache: dict, model_class=None):
+    """Same restart-dependent shape bug as gaps.py and recommendations.py
+    today: the RDS 'result' column stores a plain dict (from
+    result.model_dump()), but every engine downstream expects the actual
+    Pydantic object back, with its real attributes -- not a dict. Passing
+    model_class lets this one shared loader reconstruct the correct type
+    for whichever of the 4 analysis types is being loaded, so the RDS
+    path and the in-memory path return an identical shape regardless of
+    which one happens to serve the data."""
     if session_id in cache:
         return cache[session_id]
 
@@ -50,8 +58,10 @@ def _load(session_id: str, analysis_type: str, cache: dict):
     if not rows:
         return None
 
-    cache[session_id] = rows[0]["result"]
-    return cache[session_id]
+    raw = rows[0]["result"]
+    reconstructed = model_class(**raw) if model_class else raw
+    cache[session_id] = reconstructed
+    return reconstructed
 
 
 async def _get_recs_or_none(session_id: str):
@@ -114,7 +124,7 @@ async def analyse_objections(session_id: str):
 
 @router.get("/{session_id}/objections")
 async def get_objections(session_id: str):
-    result = _load(session_id, "objections", objection_results)
+    result = _load(session_id, "objections", objection_results, ObjectionAnalysis)
     if not result:
         raise HTTPException(status_code=404, detail="No objection analysis found")
     return result
@@ -140,7 +150,7 @@ async def generate_architecture_options(session_id: str):
 
 @router.get("/{session_id}/architecture-options")
 async def get_architecture_options(session_id: str):
-    result = _load(session_id, "arch_options", arch_options_results)
+    result = _load(session_id, "arch_options", arch_options_results, ArchitectureOptionsSet)
     if not result:
         raise HTTPException(status_code=404, detail="No architecture options found")
     return result
@@ -174,7 +184,7 @@ async def analyse_stakeholders(session_id: str):
 
 @router.get("/{session_id}/stakeholders")
 async def get_stakeholders(session_id: str):
-    result = _load(session_id, "stakeholders", stakeholder_results)
+    result = _load(session_id, "stakeholders", stakeholder_results, StakeholderAnalysis)
     if not result:
         raise HTTPException(status_code=404, detail="No stakeholder analysis found")
     return result
@@ -192,7 +202,7 @@ async def assess_deal_risk(session_id: str):
         raise HTTPException(status_code=400, detail="Run gap analysis first")
 
     entities = await discovery_engine.extract_entities(messages)
-    objections = _load(session_id, "objections", objection_results)
+    objections = _load(session_id, "objections", objection_results, ObjectionAnalysis)
 
     result = await deal_risk_engine.assess(session_id, gap_analysis, entities, objections)
     deal_risk_results[session_id] = result
@@ -202,7 +212,7 @@ async def assess_deal_risk(session_id: str):
 
 @router.get("/{session_id}/deal-risk")
 async def get_deal_risk(session_id: str):
-    result = _load(session_id, "deal_risk", deal_risk_results)
+    result = _load(session_id, "deal_risk", deal_risk_results, DealRiskAssessment)
     if not result:
         raise HTTPException(status_code=404, detail="No deal risk assessment found")
     return result
