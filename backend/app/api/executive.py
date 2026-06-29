@@ -12,7 +12,19 @@ executive_results: dict = {}
 
 
 async def _get_recs_or_none(session_id: str):
+    """Same restart-dependent shape bug found twice already today: the
+    RDS column stores a plain list of dicts (what we wrote when saving),
+    but every downstream engine (objection_engine, stakeholder_engine,
+    executive engine) expects a RecommendationSet object with a
+    .recommendations attribute -- the shape the in-memory cache always
+    had, because that's the original object the /generate endpoint built.
+    Wrap the raw list back into a RecommendationSet on the RDS path so
+    both paths return an identical shape regardless of which one served
+    the data."""
     from app.api.recommendations import recommendation_results
+    from app.models.schemas import RecommendationSet, VendorRecommendation
+    from datetime import datetime
+
     if session_id in recommendation_results:
         return recommendation_results[session_id]
 
@@ -20,7 +32,17 @@ async def _get_recs_or_none(session_id: str):
         SELECT recommendations FROM recommendation_results
         WHERE session_id = %s ORDER BY generated_at DESC LIMIT 1
     """, (session_id,), fetch=True)
-    return rows[0]["recommendations"] if rows else None
+    if not rows:
+        return None
+
+    raw_recs = rows[0]["recommendations"] or []
+    return RecommendationSet(
+        session_id=session_id,
+        recommendations=[VendorRecommendation(**r) for r in raw_recs],
+        architecture_notes="See executive summary for full architecture recommendation.",
+        implementation_roadmap=[],
+        generated_at=datetime.utcnow(),
+    )
 
 
 @router.post("/{session_id}/generate")

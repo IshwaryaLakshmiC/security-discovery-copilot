@@ -57,8 +57,18 @@ def _load(session_id: str, analysis_type: str, cache: dict):
 async def _get_recs_or_none(session_id: str):
     """recommendations.py has no importable loader of its own yet (it returns
     a FastAPI route response directly) -- read via the same cache/RDS pattern
-    used everywhere else instead of calling the route function directly."""
+    used everywhere else instead of calling the route function directly.
+
+    Same restart-dependent shape bug found in executive.py's copy of this
+    function: the RDS column stores a plain list of dicts, but
+    objection_engine and stakeholder_engine both expect a RecommendationSet
+    object with a .recommendations attribute. Wrap the raw list back into
+    a RecommendationSet so both the in-memory and RDS paths return an
+    identical shape."""
     from app.api.recommendations import recommendation_results
+    from app.models.schemas import RecommendationSet, VendorRecommendation
+    from datetime import datetime
+
     if session_id in recommendation_results:
         return recommendation_results[session_id]
 
@@ -66,7 +76,17 @@ async def _get_recs_or_none(session_id: str):
         SELECT recommendations FROM recommendation_results
         WHERE session_id = %s ORDER BY generated_at DESC LIMIT 1
     """, (session_id,), fetch=True)
-    return rows[0]["recommendations"] if rows else None
+    if not rows:
+        return None
+
+    raw_recs = rows[0]["recommendations"] or []
+    return RecommendationSet(
+        session_id=session_id,
+        recommendations=[VendorRecommendation(**r) for r in raw_recs],
+        architecture_notes="See executive summary for full architecture recommendation.",
+        implementation_roadmap=[],
+        generated_at=datetime.utcnow(),
+    )
 
 
 # ── Objection Handling ────────────────────────────────────────
