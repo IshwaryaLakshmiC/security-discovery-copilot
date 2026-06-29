@@ -4,6 +4,7 @@ from app.engines.discovery import DiscoveryEngine
 from app.models.schemas import GapAnalysis
 from app.api.discovery import _load_messages
 from app.core.database import execute
+from app.core.json_utils import json_default
 import json
 
 router = APIRouter()
@@ -61,8 +62,8 @@ async def analyse_gaps(session_id: str):
         VALUES (%s, %s, %s, %s, %s, NOW())
     """, (
         session_id,
-        json.dumps([g.model_dump() if hasattr(g, "model_dump") else g for g in analysis.gaps]),
-        json.dumps({k: (v.model_dump() if hasattr(v, "model_dump") else v) for k, v in analysis.maturity_scores.items()}),
+        json.dumps([g.model_dump() if hasattr(g, "model_dump") else g for g in analysis.gaps], default=json_default),
+        json.dumps({k: (v.model_dump() if hasattr(v, "model_dump") else v) for k, v in analysis.maturity_scores.items()}, default=json_default),
         analysis.overall_risk_level,
         json.dumps(analysis.compliance_status),
     ))

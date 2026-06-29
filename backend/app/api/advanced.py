@@ -9,6 +9,7 @@ from app.api.recommendations import get_recommendations as _get_recs_route
 from app.api.discovery import _load_messages
 from app.api.sessions import get_session_or_none
 from app.core.database import execute
+from app.core.json_utils import json_default
 import json
 
 router = APIRouter()
@@ -33,7 +34,7 @@ def _save(session_id: str, analysis_type: str, result) -> None:
     execute("""
         INSERT INTO advanced_analysis (session_id, analysis_type, result, generated_at)
         VALUES (%s, %s, %s, NOW())
-    """, (session_id, analysis_type, json.dumps(payload)))
+    """, (session_id, analysis_type, json.dumps(payload, default=json_default)))
 
 
 def _load(session_id: str, analysis_type: str, cache: dict):

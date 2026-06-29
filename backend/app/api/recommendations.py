@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from app.api.gaps import get_gap_results_or_none
 from app.core.llm import get_llm_client
 from app.core.database import execute
-from app.core.json_utils import extract_json_array
+from app.core.json_utils import extract_json_array, json_default
 from app.models.schemas import RecommendationSet, VendorRecommendation, Domain
 from datetime import datetime
 import json
@@ -198,7 +198,7 @@ Generate vendor recommendations for this customer."""
             VALUES (%s, %s, NOW())
         """, (
             session_id,
-            json.dumps([r.model_dump() for r in result.recommendations]),
+            json.dumps([r.model_dump() for r in result.recommendations], default=json_default),
         ))
 
         return result

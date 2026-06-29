@@ -3,6 +3,7 @@ from app.engines.executive import ExecutiveEngine
 from app.api.gaps import get_gap_results_or_none
 from app.api.sessions import get_session_or_none
 from app.core.database import execute
+from app.core.json_utils import json_default
 import json
 
 router = APIRouter()
@@ -42,7 +43,7 @@ async def generate_executive_summary(session_id: str):
     execute("""
         INSERT INTO advanced_analysis (session_id, analysis_type, result, generated_at)
         VALUES (%s, 'executive', %s, NOW())
-    """, (session_id, json.dumps(summary.model_dump() if hasattr(summary, "model_dump") else summary)))
+    """, (session_id, json.dumps(summary.model_dump() if hasattr(summary, "model_dump") else summary, default=json_default)))
 
     return summary
 
