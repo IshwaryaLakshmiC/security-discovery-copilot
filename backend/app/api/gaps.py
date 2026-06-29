@@ -15,12 +15,36 @@ gap_results: dict[str, GapAnalysis] = {}
 
 
 def _row_to_gap_analysis(row: dict, session_id: str) -> GapAnalysis:
+    """Rebuild a GapAnalysis from an RDS row. The 'gaps' column stores the
+    full gap objects as JSONB; top_3_priorities needs to be a list of gap
+    ID STRINGS, not the objects themselves -- this bug was invisible until
+    today because every prior test happened to hit the in-memory cache
+    (same process, never restarted between gap analysis and downstream
+    calls), where the original GapAnalysis object already had
+    top_3_priorities computed correctly by run_gap_analysis(). The moment
+    a restart forced this RDS-reload path to run for the first time, the
+    bug surfaced as a Pydantic validation error (dicts where strings were
+    expected)."""
+    gaps_list = row.get("gaps") or []
+
+    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    effort_order = {"low": 0, "medium": 1, "high": 2}
+
+    sorted_gaps = sorted(
+        gaps_list,
+        key=lambda g: (
+            severity_order.get(g.get("severity"), 99),
+            effort_order.get(g.get("remediation_effort"), 99),
+        ),
+    )
+    top_3 = [g["id"] for g in sorted_gaps[:3] if "id" in g]
+
     return GapAnalysis(
         session_id=session_id,
-        gaps=row["gaps"],
+        gaps=gaps_list,
         maturity_scores=row["maturity_scores"],
         overall_risk_level=row["overall_risk_level"],
-        top_3_priorities=row.get("gaps", [])[:3] if isinstance(row.get("gaps"), list) else [],
+        top_3_priorities=top_3,
         compliance_status=row.get("compliance_status") or {},
         generated_at=row["generated_at"],
     )
