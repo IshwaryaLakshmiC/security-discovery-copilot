@@ -208,6 +208,13 @@ class LLMClient:
                 timeout=60.0
             )
             data = response.json()
+            if response.status_code != 200 or "choices" not in data:
+                # Surface OpenRouter's actual error (rate limit, invalid
+                # model, auth failure, etc.) instead of letting a bare
+                # KeyError hide what actually went wrong -- this was the
+                # exact failure mode that cost real debugging time today.
+                error_detail = data.get("error", {}).get("message", str(data))
+                raise Exception(f"OpenRouter error (HTTP {response.status_code}): {error_detail}")
             return data["choices"][0]["message"]["content"]
 
     async def _openrouter_stream(self, system: str, messages: list[dict], max_tokens: int) -> AsyncGenerator[str, None]:
